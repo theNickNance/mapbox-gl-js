@@ -284,7 +284,6 @@ class Painter {
         if (layer.isHidden(this.transform.zoom)) return;
         if (layer.type !== 'background' && !coords.length) return;
         this.id = layer.id;
-
         draw[layer.type](painter, sourceCache, layer, coords);
     }
 
