@@ -78,7 +78,7 @@ module.exports = function validateSource(options) {
         return validateEnum({
             key: `${key}.type`,
             value: value.type,
-            valueSpec: {values: ['vector', 'raster', 'geojson', 'video', 'image', 'canvas']},
+            valueSpec: {values: ['vector', 'raster', 'raster-terrain', 'geojson', 'video', 'image', 'canvas']},
             style: style,
             styleSpec: styleSpec
         });
