@@ -60,8 +60,7 @@ function createFunction(parameters, propertySpec) {
         }
         return f;
     } else {
-        console.log(expr)
-        throw new Error(compiled.errors.map(err => `${err.key}: ${err.error}`));
+        throw new Error(compiled.errors.map(err => `${err.key}: ${err.error}`).join(', '));
     }
 }
 
