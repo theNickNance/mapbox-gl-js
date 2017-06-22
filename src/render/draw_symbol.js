@@ -4,7 +4,7 @@ const assert = require('assert');
 const util = require('../util/util');
 const drawCollisionDebug = require('./draw_collision_debug');
 const pixelsToTileUnits = require('../source/pixels_to_tile_units');
-const interpolationFactor = require('../style-spec/function').interpolationFactor;
+const interpolationFactor = require('../style-spec/function/interpolation_factor');
 
 module.exports = drawSymbols;
 
