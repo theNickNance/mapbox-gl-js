@@ -7,7 +7,6 @@ const Glyphs = require('../util/glyphs');
 const GlyphAtlas = require('../symbol/glyph_atlas');
 const Protobuf = require('pbf');
 const TinySDF = require('tiny-sdf');
-const scriptDetection = require('../util/script_detection');
 
 // A simplified representation of the glyph containing only the properties needed for shaping.
 class SimpleGlyph {
@@ -36,11 +35,16 @@ class GlyphSource {
         this.atlases = {};
         this.stacks = {};
         this.loading = {};
+
+        const fontSize = 24;
+        const buffer = 2;
+        const radius = fontSize / 3;
+        this.sdf = new TinySDF(fontSize, buffer, radius);
     }
 
     getSimpleGlyphs(fontstack, glyphIDs, uid, callback) {
         if (this.stacks[fontstack] === undefined) {
-            this.stacks[fontstack] = {};
+            this.stacks[fontstack] = { ranges: {}, cjkGlyphs: {} };
         }
         if (this.atlases[fontstack] === undefined) {
             this.atlases[fontstack] = new GlyphAtlas();
@@ -53,22 +57,31 @@ class GlyphSource {
         // the number of pixels the sdf bitmaps are padded by
         const buffer = 3;
 
-        const missing = {};
+        const missingRanges = {};
         let remaining = 0;
 
         const getGlyph = (glyphID) => {
             const range = Math.floor(glyphID / 256);
+            if (glyphID >= 0x4E00 && glyphID <= 0x9FFF) {
+                if (!stack.cjkGlyphs[glyphID]) {
+                    stack.cjkGlyphs[glyphID] = this.loadCJKGlyph(fontstack, glyphID);
+                }
 
-            if (stack[range]) {
-                const glyph = stack[range].glyphs[glyphID];
+                const glyph = stack.cjkGlyphs[glyphID];
                 const rect  = atlas.addGlyph(uid, fontstack, glyph, buffer);
                 if (glyph) glyphs[glyphID] = new SimpleGlyph(glyph, rect, buffer);
             } else {
-                if (missing[range] === undefined) {
-                    missing[range] = [];
-                    remaining++;
+                if (stack.ranges[range]) {
+                    const glyph = stack.ranges[range].glyphs[glyphID];
+                    const rect  = atlas.addGlyph(uid, fontstack, glyph, buffer);
+                    if (glyph) glyphs[glyphID] = new SimpleGlyph(glyph, rect, buffer);
+                } else {
+                    if (missingRanges[range] === undefined) {
+                        missingRanges[range] = [];
+                        remaining++;
+                    }
+                    missingRanges[range].push(glyphID);
                 }
-                missing[range].push(glyphID);
             }
         };
 
@@ -85,9 +98,9 @@ class GlyphSource {
 
         const onRangeLoaded = (err, range, data) => {
             if (!err) {
-                const stack = this.stacks[fontstack][range] = data.stacks[0];
-                for (let i = 0; i < missing[range].length; i++) {
-                    const glyphID = missing[range][i];
+                const stack = this.stacks[fontstack].ranges[range] = data.stacks[0];
+                for (let i = 0; i < missingRanges[range].length; i++) {
+                    const glyphID = missingRanges[range][i];
                     const glyph = stack.glyphs[glyphID];
                     const rect  = atlas.addGlyph(uid, fontstack, glyph, buffer);
                     if (glyph) glyphs[glyphID] = new SimpleGlyph(glyph, rect, buffer);
@@ -97,55 +110,33 @@ class GlyphSource {
             if (!remaining) callback(undefined, glyphs, fontstack);
         };
 
-        for (const r in missing) {
+        for (const r in missingRanges) {
             this.loadRange(fontstack, r, onRangeLoaded);
         }
     }
 
-    loadCJKRange(fontstack, range, callback) {
+    loadCJKGlyph(fontstack, glyphID) {
         // Rough implementation: do it synchronously, ignore fontstack and use default font
-        // Generate all glyphs in the range, even if they aren't being used
-        const glyphs = {
-            stacks: [
-                {
-                    name: fontstack,
-                    range: range,
-                    glyphs: {}
-                }]
-        };
-        const fontSize = 24;
-        const buffer = 2;
-        const radius = fontSize / 3;
-        const sdf = new TinySDF(fontSize, buffer, radius);
-        for (let i = 0; i < 256; i++) {
-            const glyphID = range * 256 + i;
-            const imgData = sdf.draw(String.fromCharCode(glyphID));
-            const alphaData = new Uint8Array(imgData.data.length / 4);
-            for (let i = 0; i < imgData.data.length; i++) {
-                if (i % 4 === 0) {
-                    alphaData[i / 4] = imgData.data[i];
-                }
+        const imgData = this.sdf.draw(String.fromCharCode(glyphID));
+        const alphaData = new Uint8Array(imgData.data.length / 4);
+        for (let i = 0; i < imgData.data.length; i++) {
+            if (i % 4 === 0) {
+                alphaData[i / 4] = imgData.data[i];
             }
-            const glyph = {
-                id: glyphID,
-                bitmap: alphaData,
-                width: 22,
-                height: 22,
-                left: 1,
-                top: -6,
-                advance: 24
-            };
-            glyphs.stacks[0].glyphs[glyphID] = glyph;
         }
-        callback(null, range, glyphs);
+        return {
+            id: glyphID,
+            bitmap: alphaData,
+            width: 22,
+            height: 22,
+            left: 1,
+            top: -6,
+            advance: 24
+        };
     }
 
     loadRange(fontstack, range, callback) {
         if (range * 256 > 65535) return callback('glyphs > 65535 not supported');
-        if (range * 256 >= 0x4E00 && range * 256 <= 0x9FFF) {
-            this.loadCJKRange(fontstack, range, callback);
-            return;
-        }
 
         if (this.loading[fontstack] === undefined) {
             this.loading[fontstack] = {};
