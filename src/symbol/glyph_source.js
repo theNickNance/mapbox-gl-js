@@ -6,6 +6,8 @@ const verticalizePunctuation = require('../util/verticalize_punctuation');
 const Glyphs = require('../util/glyphs');
 const GlyphAtlas = require('../symbol/glyph_atlas');
 const Protobuf = require('pbf');
+const TinySDF = require('tiny-sdf');
+const scriptDetection = require('../util/script_detection');
 
 // A simplified representation of the glyph containing only the properties needed for shaping.
 class SimpleGlyph {
@@ -100,8 +102,50 @@ class GlyphSource {
         }
     }
 
+    loadCJKRange(fontstack, range, callback) {
+        // Rough implementation: do it synchronously, ignore fontstack and use default font
+        // Generate all glyphs in the range, even if they aren't being used
+        const glyphs = {
+            stacks: [
+                {
+                    name: fontstack,
+                    range: range,
+                    glyphs: {}
+                }]
+        };
+        const fontSize = 24;
+        const buffer = 2;
+        const radius = fontSize / 3;
+        const sdf = new TinySDF(fontSize, buffer, radius);
+        for (let i = 0; i < 256; i++) {
+            const glyphID = range * 256 + i;
+            const imgData = sdf.draw(String.fromCharCode(glyphID));
+            const alphaData = new Uint8Array(imgData.data.length / 4);
+            for (let i = 0; i < imgData.data.length; i++) {
+                if (i % 4 === 0) {
+                    alphaData[i / 4] = imgData.data[i];
+                }
+            }
+            const glyph = {
+                id: glyphID,
+                bitmap: alphaData,
+                width: 22,
+                height: 22,
+                left: 1,
+                top: -6,
+                advance: 24
+            };
+            glyphs.stacks[0].glyphs[glyphID] = glyph;
+        }
+        callback(null, range, glyphs);
+    }
+
     loadRange(fontstack, range, callback) {
         if (range * 256 > 65535) return callback('glyphs > 65535 not supported');
+        if (range * 256 >= 0x4E00 && range * 256 <= 0x9FFF) {
+            this.loadCJKRange(fontstack, range, callback);
+            return;
+        }
 
         if (this.loading[fontstack] === undefined) {
             this.loading[fontstack] = {};
