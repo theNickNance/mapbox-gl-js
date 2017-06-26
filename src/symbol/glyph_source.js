@@ -30,16 +30,17 @@ class GlyphSource {
     /**
      * @param {string} url glyph template url
      */
-    constructor(url) {
+    constructor(url, cjkGlyphFont) {
         this.url = url && normalizeURL(url);
         this.atlases = {};
         this.stacks = {};
         this.loading = {};
+        this.cjkGlyphFont = cjkGlyphFont;
 
         const fontSize = 24;
         const buffer = 2;
         const radius = fontSize / 3;
-        this.sdf = new TinySDF(fontSize, buffer, radius);
+        this.sdf = new TinySDF(fontSize, buffer, radius, .25, cjkGlyphFont);
     }
 
     getSimpleGlyphs(fontstack, glyphIDs, uid, callback) {
@@ -62,7 +63,7 @@ class GlyphSource {
 
         const getGlyph = (glyphID) => {
             const range = Math.floor(glyphID / 256);
-            if (glyphID >= 0x4E00 && glyphID <= 0x9FFF) {
+            if (this.cjkGlyphFont && glyphID >= 0x4E00 && glyphID <= 0x9FFF) {
                 if (!stack.cjkGlyphs[glyphID]) {
                     stack.cjkGlyphs[glyphID] = this.loadCJKGlyph(fontstack, glyphID);
                 }

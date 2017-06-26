@@ -213,7 +213,7 @@ class Map extends Camera {
         this.resize();
 
         if (options.classes) this.setClasses(options.classes);
-        if (options.style) this.setStyle(options.style);
+        if (options.style) this.setStyle(options.style, options.cjkGlyphFont ? { cjkGlyphFont: options.cjkGlyphFont } : null);
 
         if (options.attributionControl) this.addControl(new AttributionControl());
         this.addControl(new LogoControl(), options.logoPosition);
@@ -862,7 +862,7 @@ class Map extends Camera {
         } else if (style instanceof Style) {
             this.style = style;
         } else {
-            this.style = new Style(style, this);
+            this.style = new Style(style, this, options);
         }
 
         this.style.setEventedParent(this, {style: this.style});
