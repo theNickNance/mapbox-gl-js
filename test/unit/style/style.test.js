@@ -1,10 +1,12 @@
 'use strict';
 
 const test = require('mapbox-gl-js-test').test;
+const sinon = require('sinon');
 const proxyquire = require('proxyquire');
 const Style = require('../../../src/style/style');
 const SourceCache = require('../../../src/source/source_cache');
 const StyleLayer = require('../../../src/style/style_layer');
+const Transform = require('../../../src/geo/transform');
 const util = require('../../../src/util/util');
 const Evented = require('../../../src/util/evented');
 const window = require('../../../src/util/window');
@@ -729,6 +731,48 @@ test('Style#addLayer', (t) => {
             }
         });
 
+    });
+
+    t.test('#4738 postpones source reload until layers have been broadcast to workers', (t) => {
+        const style = new Style(util.extend(createStyleJSON(), {
+            "sources": {
+                "geojson": {
+                    "type": "geojson",
+                    "data": {"type": "FeatureCollection", "features": []}
+                }
+            },
+            "layers": [
+                {
+                    "id": "circle",
+                    "type": "circle",
+                    "source": "geojson"
+                }
+            ]
+        }));
+
+        const tr = new Transform();
+        tr.resize(512, 512);
+
+        style.once('style.load', () => {
+            style.update();
+            style._recalculate(tr.zoom);
+            style.sourceCaches['geojson'].update(tr);
+
+            const source = style.getSource('geojson');
+            sinon.stub(source, 'loadTile').callsFake(() => {
+                t.fail('reloadTile called before Style#update()');
+                t.end();
+            });
+
+            source.on('data', (e) => {
+                if (e.dataType === 'source' && e.sourceDataType === 'content') {
+                    t.end();
+                }
+            });
+
+            source.setData({"type": "FeatureCollection", "features": []});
+            style.setPaintProperty('circle', 'circle-color', {type: 'identity', property: 'foo'});
+        });
     });
 
     t.test('fires "data" event', (t) => {
